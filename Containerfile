@@ -48,7 +48,7 @@ FROM rust-builder-base AS rust-builder
 ###############################################################################
 # Main application stage
 ###############################################################################
-FROM registry.access.redhat.com/ubi10/ubi-minimal:10.1-1770180557
+FROM registry.access.redhat.com/ubi9/ubi-minimal:9.5
 LABEL maintainer="Mihai Criveti" \
       name="mcp/mcpgateway" \
       version="1.0.0-RC-1" \
