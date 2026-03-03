@@ -6806,7 +6806,7 @@ async def websocket_endpoint(websocket: WebSocket):
             logger.error(f"Error while closing WebSocket: {er}")
 
 
-@utility_router.get("/sse")
+@utility_router.api_route("/sse", methods=["GET", "POST"])
 @require_permission("tools.execute")
 async def utility_sse_endpoint(request: Request, user=Depends(get_current_user_with_permissions)):
     """
@@ -6825,6 +6825,13 @@ async def utility_sse_endpoint(request: Request, user=Depends(get_current_user_w
         asyncio.CancelledError: If the request is cancelled during SSE setup.
     """
     try:
+        # Watsonx Orchestrate uses POST /sse for MCP initialization.
+        # We accept POST and return the same SSE stream.
+        if request.method == "POST":
+            try:
+                _ = await request.body()  # Drain body safely
+            except Exception:
+                pass
         logger.debug("User %s requested SSE connection", user)
         base_url = update_url_protocol(request)
 
