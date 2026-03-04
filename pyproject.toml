@@ -189,7 +189,7 @@ redis-pure = [
 # Requires system dependency: libpq-dev (Debian/Ubuntu) or postgresql-devel (RHEL/Fedora)
 # Install with: sudo apt-get install libpq-dev (or dnf install postgresql-devel)
 postgres = [
-    "psycopg[c,binary]>=3.3.3",
+    "psycopg[binary]>=3.3.3",
 ]
 
 mysql = [
