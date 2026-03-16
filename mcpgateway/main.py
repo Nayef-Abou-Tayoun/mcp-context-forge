@@ -3928,6 +3928,122 @@ async def invoke_a2a_agent(
     except A2AAgentError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
+@a2a_router.post("/{agent_name}/message", response_model=Dict[str, Any])
+@require_permission("a2a.invoke")
+async def invoke_a2a_agent_standard(
+    agent_name: str,
+    request: Request,
+    body: Dict[str, Any] = Body(...),
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user_with_permissions),
+) -> Dict[str, Any]:
+    """
+    Invokes an A2A agent using standard A2A 0.3.0 protocol format.
+
+    This endpoint accepts the standard A2A message format with message.parts structure
+    and is compatible with watsonx Orchestrate and other A2A 0.3.0 compliant systems.
+
+    Args:
+        agent_name (str): The name of the agent to invoke.
+        request (Request): The FastAPI request object for team_id retrieval.
+        body (Dict[str, Any]): A2A 0.3.0 standard message format.
+        db (Session): The database session used to interact with the data store.
+        user (str): The authenticated user making the request.
+
+    Returns:
+        Dict[str, Any]: The response in A2A 0.3.0 format.
+
+    Raises:
+        HTTPException: If the agent is not found, user lacks access, or there is an error during invocation.
+    """
+    try:
+        logger.debug(f"User {SecurityValidator.sanitize_log_message(str(user))} is invoking A2A agent '{agent_name}' via standard A2A 0.3.0 protocol")
+
+        if a2a_service is None:
+            raise HTTPException(status_code=503, detail="A2A service not available")
+
+        # Extract message from A2A 0.3.0 format
+        message = body.get("message", {})
+        parts = message.get("parts", [])
+
+        # Convert A2A format to internal format
+        parameters = {}
+        interaction_type = "query"
+
+        # Extract content from parts based on kind
+        for part in parts:
+            kind = part.get("kind", "")
+            if kind == "text":
+                # Text content
+                parameters["text"] = part.get("text", "")
+            elif kind == "data":
+                # Structured data
+                parameters["data"] = part.get("data", {})
+            elif kind == "tool_use":
+                # Tool invocation request
+                parameters["tool_name"] = part.get("name", "")
+                parameters["tool_input"] = part.get("input", {})
+                interaction_type = "execute"
+
+        # If no parameters extracted, use the entire message
+        if not parameters:
+            parameters = {"message": message}
+
+        # Get filtering context from token (respects token scope)
+        user_email, token_teams, is_admin = _get_rpc_filter_context(request, user)
+
+        # Admin bypass - only when token has NO team restrictions
+        if is_admin and token_teams is None:
+            token_teams = None  # Admin unrestricted
+        elif token_teams is None:
+            token_teams = []  # Non-admin without teams = public-only
+
+        user_id = None
+        if isinstance(user, dict):
+            user_id = str(user.get("id") or user.get("sub") or user_email)
+        else:
+            user_id = str(user)
+
+        # Invoke the agent using internal service
+        result = await a2a_service.invoke_agent(
+            db,
+            agent_name,
+            parameters,
+            interaction_type,
+            user_id=user_id,
+            user_email=user_email,
+            token_teams=token_teams,
+        )
+
+        # Convert response to A2A 0.3.0 format
+        response_parts = []
+
+        # Handle different result types
+        if isinstance(result, dict):
+            # If result has a specific structure, preserve it
+            if "response" in result:
+                response_parts.append({"kind": "text", "text": str(result["response"])})
+            elif "error" in result:
+                response_parts.append({"kind": "text", "text": f"Error: {result['error']}"})
+            else:
+                # Generic dict response
+                response_parts.append({"kind": "data", "data": result})
+        elif isinstance(result, str):
+            response_parts.append({"kind": "text", "text": result})
+        else:
+            # Fallback: convert to string
+            response_parts.append({"kind": "text", "text": str(result)})
+
+        return {"message": {"role": "assistant", "parts": response_parts}}
+
+    except A2AAgentNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except A2AAgentError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Unexpected error in A2A standard invocation: {e}")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
 
 #############
 # Tool APIs #
