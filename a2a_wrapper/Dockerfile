@@ -10,15 +10,15 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY contextforge_wrapper.py .
 
 # Environment variables (can be overridden at runtime)
-ENV PORT=5000
+ENV PORT=8080
 ENV PYTHONUNBUFFERED=1
 
 # Expose port
-EXPOSE 5000
+EXPOSE 8080
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-  CMD python -c "import requests; requests.get('http://localhost:5000/health', timeout=5)"
+  CMD python -c "import requests; requests.get('http://localhost:8080/health', timeout=5)"
 
 # Run with gunicorn for production
-CMD ["gunicorn", "-w", "4", "-b", "0.0.0.0:5000", "--timeout", "120", "--access-logfile", "-", "--error-logfile", "-", "contextforge_wrapper:app"]
+CMD ["sh", "-c", "gunicorn -w 4 -b 0.0.0.0:${PORT} --timeout 120 --access-logfile - --error-logfile - contextforge_wrapper:app"]
