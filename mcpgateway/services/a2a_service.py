@@ -14,6 +14,7 @@ and interactions with A2A-compatible agents.
 
 # Standard
 import binascii
+import json
 from datetime import datetime, timezone
 from typing import Any, AsyncGenerator, Dict, List, Optional, Union
 
@@ -65,6 +66,71 @@ logger = logging_service.get_logger(__name__)
 
 # Initialize structured logger for A2A lifecycle tracking
 structured_logger = get_structured_logger("a2a_service")
+
+
+def _parse_sse_stream(response_text: str) -> Dict[str, Any]:
+    """
+    Parse Server-Sent Events (SSE) stream format.
+    Combines all delta content chunks into a single response.
+    
+    Args:
+        response_text: Raw SSE response text
+        
+    Returns:
+        Dict with combined content or original response if not SSE
+    """
+    if not response_text or not response_text.strip().startswith(('id:', 'event:', 'data:')):
+        # Not SSE format, return as-is
+        try:
+            return json.loads(response_text)
+        except json.JSONDecodeError:
+            return {"response": response_text}
+    
+    full_content = ""
+    model_id = None
+    
+    for line in response_text.split('\n'):
+        line = line.strip()
+        if not line or line.startswith(('id:', 'event:')):
+            continue
+            
+        if line.startswith('data: '):
+            try:
+                data = json.loads(line[6:])  # Remove "data: " prefix
+                
+                # Extract content from delta (watsonx.ai format)
+                if 'choices' in data and len(data['choices']) > 0:
+                    choice = data['choices'][0]
+                    if 'delta' in choice and 'content' in choice['delta']:
+                        full_content += choice['delta']['content']
+                    if 'model_id' in data:
+                        model_id = data['model_id']
+                        
+            except json.JSONDecodeError:
+                continue
+    
+    # Return in A2A format
+    if full_content:
+        result = {
+            "message": {
+                "role": "assistant",
+                "parts": [
+                    {
+                        "kind": "text",
+                        "text": full_content
+                    }
+                ]
+            }
+        }
+        if model_id:
+            result["metadata"] = {"model_id": model_id}
+        return result
+    
+    # Fallback: try to parse as JSON
+    try:
+        return json.loads(response_text)
+    except json.JSONDecodeError:
+        return {"response": response_text}
 
 
 class A2AAgentError(Exception):
@@ -1438,7 +1504,13 @@ class A2AAgentService(BaseService):
             call_duration_ms = (datetime.now(timezone.utc) - call_start_time).total_seconds() * 1000
 
             if http_response.status_code == 200:
-                response = http_response.json()
+                # Try to parse as JSON first, fall back to SSE parsing
+                try:
+                    response = http_response.json()
+                except (ValueError, json.JSONDecodeError):
+                    # Response might be SSE stream, parse it
+                    response = _parse_sse_stream(http_response.text)
+                
                 success = True
 
                 # Log successful A2A call
