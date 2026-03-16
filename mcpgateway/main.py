@@ -3867,6 +3867,74 @@ async def delete_a2a_agent(
         raise HTTPException(status_code=400, detail=str(e))
 
 
+@a2a_router.get("/{agent_name}", response_model=Dict[str, Any])
+@require_permission("a2a.read")
+async def get_a2a_agent_capabilities(
+    agent_name: str,
+    request: Request,
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user_with_permissions),
+) -> Dict[str, Any]:
+    """
+    Get A2A agent capabilities and metadata (A2A 0.3.0 protocol discovery endpoint).
+    
+    This endpoint is called by watsonx Orchestrate and other A2A clients to discover
+    what the agent can do before invoking it.
+    
+    Args:
+        agent_name (str): The name of the agent.
+        request (Request): The FastAPI request object.
+        db (Session): The database session.
+        user: The authenticated user.
+        
+    Returns:
+        Dict[str, Any]: Agent capabilities in A2A 0.3.0 format.
+    """
+    try:
+        if a2a_service is None:
+            raise HTTPException(status_code=503, detail="A2A service not available")
+            
+        # Get filtering context from token
+        user_email, token_teams, is_admin = _get_rpc_filter_context(request, user)
+        
+        # Admin bypass - only when token has NO team restrictions
+        if is_admin and token_teams is None:
+            token_teams = None
+        elif token_teams is None:
+            token_teams = []
+            
+        # Get the agent details
+        agent = await a2a_service.get_agent_by_name(db, agent_name)
+        
+        # Check access
+        if not a2a_service._check_agent_access(agent, user_email, token_teams):
+            raise HTTPException(status_code=404, detail=f"A2A Agent not found: {agent_name}")
+        
+        # Return A2A 0.3.0 capabilities format
+        return {
+            "name": agent.name,
+            "description": agent.description or f"A2A agent: {agent.name}",
+            "version": "0.3.0",
+            "capabilities": {
+                "message": True,
+                "streaming": False,
+                "tools": []
+            },
+            "metadata": {
+                "agent_type": agent.agent_type,
+                "endpoint_url": agent.endpoint_url,
+                "enabled": agent.enabled,
+                "reachable": agent.reachable
+            }
+        }
+        
+    except A2AAgentNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error getting A2A agent capabilities: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @a2a_router.post("/{agent_name}/invoke", response_model=Dict[str, Any])
 @require_permission("a2a.invoke")
 async def invoke_a2a_agent(
