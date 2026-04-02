@@ -456,6 +456,13 @@ class PIIDetector:
                     return f"***-***-{value[-4:]}"
                 return self.config.redaction_text
 
+            elif pii_type == PIIType.IMEI:
+                # IMEI: Show last 4 digits for identification while hiding manufacturer info
+                # First 6 digits (TAC) identify manufacturer and model - must be hidden
+                if len(value) >= 4:
+                    return f"***********{value[-4:]}"
+                return self.config.redaction_text
+
             else:
                 # For other types, show first and last characters
                 if len(value) > 2:
