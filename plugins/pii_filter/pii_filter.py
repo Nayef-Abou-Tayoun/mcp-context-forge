@@ -74,6 +74,7 @@ class PIIType(str, Enum):
     MEDICAL_RECORD = "medical_record"
     AWS_KEY = "aws_key"
     API_KEY = "api_key"
+    IMEI = "imei"
     CUSTOM = "custom"
 
 
@@ -114,6 +115,7 @@ class PIIFilterConfig(BaseModel):
     detect_medical_record: bool = Field(default=True, description="Detect medical record numbers")
     detect_aws_keys: bool = Field(default=True, description="Detect AWS access keys")
     detect_api_keys: bool = Field(default=True, description="Detect generic API keys")
+    detect_imei: bool = Field(default=True, description="Detect IMEI (International Mobile Equipment Identity) numbers")
 
     # Masking configuration
     default_mask_strategy: MaskingStrategy = Field(default=MaskingStrategy.REDACT, description="Default masking strategy")
@@ -280,6 +282,36 @@ class PIIDetector:
                     description="Generic API key",
                     mask_strategy=MaskingStrategy.REDACT,
                 )
+            )
+
+        # IMEI (International Mobile Equipment Identity) patterns
+        # IMEI is a 15-digit number (14 digits + 1 check digit) or 17 digits with software version
+        # Format: XXXXXX-XX-XXXXXX-X or 15 consecutive digits
+        if self.config.detect_imei:
+            patterns.extend(
+                [
+                    # IMEI with context keywords
+                    PIIPattern(
+                        type=PIIType.IMEI,
+                        pattern=r'\b(?:IMEI|Device ID|Equipment ID)[:\s#]*\d{15}(?:\d{2})?\b',
+                        description="IMEI with context",
+                        mask_strategy=MaskingStrategy.PARTIAL,
+                    ),
+                    # IMEI with dashes (XXXXXX-XX-XXXXXX-X)
+                    PIIPattern(
+                        type=PIIType.IMEI,
+                        pattern=r'\b\d{6}-\d{2}-\d{6}-\d{1,3}\b',
+                        description="IMEI with dashes",
+                        mask_strategy=MaskingStrategy.PARTIAL,
+                    ),
+                    # 15 or 17 digit IMEI (standalone, requires context to avoid false positives)
+                    PIIPattern(
+                        type=PIIType.IMEI,
+                        pattern=r'\b(?:IMEI|Device|Equipment|Mobile|Phone)[:\s]+\d{15}(?:\d{2})?\b',
+                        description="IMEI number",
+                        mask_strategy=MaskingStrategy.PARTIAL,
+                    ),
+                ]
             )
 
         # Add custom patterns
