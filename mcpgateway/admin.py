@@ -1211,6 +1211,11 @@ async def enforce_admin_csrf(request: Request) -> None:
     if request.method.upper() in {"GET", "HEAD", "OPTIONS", "TRACE"}:
         return
 
+    # Exclude logout endpoint from CSRF validation
+    # Logout is a safe operation that clears session state
+    if request.url.path.endswith("/admin/logout"):
+        return
+
     jwt_cookie = request.cookies.get("jwt_token")
     if not jwt_cookie:
         # CSRF is relevant only for browser cookie auth. Token-auth API calls
