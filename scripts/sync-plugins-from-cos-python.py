@@ -15,9 +15,9 @@ def main():
     print("=== IBM Cloud Object Storage Plugin Sync (Python) ===")
     print("Starting plugin sync from COS bucket...")
     
-    # Required environment variables
-    cos_access_key = os.environ.get('COS_ACCESS_KEY_ID')
-    cos_secret_key = os.environ.get('COS_SECRET_ACCESS_KEY')
+    # Required environment variables - try HMAC credentials first, then fall back to COS credentials
+    cos_access_key = os.environ.get('HMAC_ACCESS_KEY_ID') or os.environ.get('COS_ACCESS_KEY_ID')
+    cos_secret_key = os.environ.get('HMAC_SECRET_ACCESS_KEY') or os.environ.get('COS_SECRET_ACCESS_KEY')
     cos_bucket = os.environ.get('COS_BUCKET')
     cos_endpoint = os.environ.get('COS_ENDPOINT')
     
@@ -121,6 +121,17 @@ def main():
     
     print("=== Plugin sync completed successfully ===")
     print(f"Plugins are available at: {plugin_dir}")
+    
+    # Verify config.yaml was synced
+    config_path = Path(plugin_dir) / 'config.yaml'
+    if config_path.exists():
+        print(f"✓ Plugin configuration synced: {config_path}")
+        # Update PLUGINS_CONFIG_FILE environment variable to use synced config
+        os.environ['PLUGINS_CONFIG_FILE'] = str(config_path)
+        print(f"✓ Updated PLUGINS_CONFIG_FILE to: {config_path}")
+    else:
+        print(f"WARNING: config.yaml not found at {config_path}")
+        print("Application will use ConfigMap config instead")
 
 if __name__ == '__main__':
     main()
