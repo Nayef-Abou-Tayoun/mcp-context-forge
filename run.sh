@@ -167,6 +167,18 @@ if [[ "$DATABASE_URL" == sqlite:* ]]; then
     mkdir -p "$DB_DIR"
 fi
 
+# Sync plugins from COS if enabled
+if [ "${SYNC_PLUGINS_FROM_COS}" = "true" ]; then
+    echo "🔄 Syncing plugins from IBM Cloud Object Storage..."
+    if [ -f "/app/scripts/sync-plugins-from-cos-python.py" ]; then
+        python3 /app/scripts/sync-plugins-from-cos-python.py || {
+            echo "⚠️  Warning: Plugin sync failed, continuing with existing plugins..."
+        }
+    else
+        echo "⚠️  Warning: Sync script not found at /app/scripts/sync-plugins-from-cos-python.py"
+    fi
+fi
+
 # Build log configuration
 if [ "$ACCESS_LOG" = "false" ]; then
     LOG_CONFIG="$LOG_CONFIG --no-access-log"
