@@ -181,6 +181,9 @@ COPY mcp-catalog.yml /app/
 # Optional: Copy run.sh if it's needed in production
 COPY run.sh /app/
 
+# Copy scripts directory for COS sync and other utilities
+COPY scripts/ /app/scripts/
+
 # ----------------------------------------------------------------------------
 # Download CDN assets for airgapped deployment
 # This downloads external CSS/JS dependencies during build
